@@ -278,22 +278,26 @@ void FlexIOSPI::setShiftBufferOut(uint32_t val, uint8_t nbits) {
 }
 
 void FlexIOSPI::setShiftBufferOut(const void *buf, uint8_t nbits, size_t dtype_size) {
-    uint32_t val = 0;
-    switch (dtype_size) {
-    case 1:
-        val = *(uint8_t *)buf;
-        break;
-    case 2:
-        val = *(uint16_t *)buf;
-        break;
-    case 3:
-        val = (*(uint32_t *)buf) & 0xffffff;
-        break;
-    case 4:
-        val = *(uint32_t *)buf;
-        break;
-    default:
-        break;
+    uint32_t val = _transferWriteFill;
+
+    if (nullptr != buf)
+    {
+        switch (dtype_size) {
+        case 1:
+            val = *(uint8_t *)buf;
+            break;
+        case 2:
+            val = *(uint16_t *)buf;
+            break;
+        case 3:
+            val = (*(uint32_t *)buf) & 0xffffff;
+            break;
+        case 4:
+            val = *(uint32_t *)buf;
+            break;
+        default:
+            break;
+        }
     }
     setShiftBufferOut(val, nbits);
 }
@@ -309,24 +313,26 @@ uint32_t FlexIOSPI::getShiftBufferIn(uint8_t nbits) {
 }
 
 void FlexIOSPI::getShiftBufferIn(void *retbuf, uint8_t nbits, size_t dtype_size) {
-    uint32_t tmp;
-    switch (dtype_size) {
-    case 1:
-        *(uint8_t *)retbuf = (uint8_t)getShiftBufferIn(nbits);
-        break;
-    case 2:
-        *(uint16_t *)retbuf = (uint16_t)getShiftBufferIn(nbits);
-        break;
-    case 3: // The weird case that gets some shuffling to handle the last chunk without overflowing
-        tmp = getShiftBufferIn(nbits);
-        *(uint16_t *)retbuf = (uint16_t)tmp & 0xffff;           // Lower16 bits
-        *((uint8_t *)retbuf + 2) = (uint8_t)(tmp >> 16) & 0xff; // Upper8 bits
-        break;
-    case 4:
-        *(uint32_t *)retbuf = (uint32_t)getShiftBufferIn(nbits);
-        break;
-    default:
-        break;
+    uint32_t tmp = getShiftBufferIn(nbits);
+    if (nullptr != retbuf)
+    {
+        switch (dtype_size) {
+        case 1:
+            *(uint8_t *)retbuf = (uint8_t) tmp;
+            break;
+        case 2:
+            *(uint16_t *)retbuf = (uint16_t) tmp;
+            break;
+        case 3: // The weird case that gets some shuffling to handle the last chunk without overflowing
+            *(uint16_t *)retbuf = (uint16_t)tmp & 0xffff;           // Lower16 bits
+            *((uint8_t *)retbuf + 2) = (uint8_t)(tmp >> 16) & 0xff; // Upper8 bits
+            break;
+        case 4:
+            *(uint32_t *)retbuf = tmp;
+            break;
+        default:
+            break;
+        }
     }
 }
 
@@ -377,8 +383,8 @@ void FlexIOSPI::transferBufferNBits(const void *buf, void *retbuf, size_t count,
     while (!(_pflex->port().SHIFTSTAT & _tx_shifter_mask))
         ; // wait for room for the first character
 
+    setShiftBufferOut(tx_buffer, nbits, bytestride);
     if (tx_buffer) {
-        setShiftBufferOut(tx_buffer, nbits, bytestride);
         tx_buffer += bytestride;
     }
     tx_count--;
@@ -387,8 +393,8 @@ void FlexIOSPI::transferBufferNBits(const void *buf, void *retbuf, size_t count,
         while (!(_pflex->port().SHIFTSTAT & _tx_shifter_mask))
             ;
 
+        setShiftBufferOut(tx_buffer, nbits, bytestride);
         if (tx_buffer) {
-            setShiftBufferOut(tx_buffer, nbits, bytestride);
             tx_buffer += bytestride;
         }
         tx_count--;
@@ -397,8 +403,8 @@ void FlexIOSPI::transferBufferNBits(const void *buf, void *retbuf, size_t count,
         while (!(_pflex->port().SHIFTSTAT & _rx_shifter_mask))
             ;
 
+        getShiftBufferIn(rx_buffer, nbits, bytestride);
         if (rx_buffer) {
-            getShiftBufferIn(rx_buffer, nbits, bytestride);
             rx_buffer += bytestride;
         }
     }
@@ -406,10 +412,7 @@ void FlexIOSPI::transferBufferNBits(const void *buf, void *retbuf, size_t count,
     while (!(_pflex->port().SHIFTSTAT & _rx_shifter_mask) && !(_pflex->port().SHIFTERR & _rx_shifter_mask))
         ;
 
-    if (rx_buffer) {
-        getShiftBufferIn(rx_buffer, nbits, bytestride);
-        rx_buffer += bytestride;
-    }
+    getShiftBufferIn(rx_buffer, nbits, bytestride);
 }
 
 bool FlexIOSPI::call_back(FlexIOHandler *pflex) {
